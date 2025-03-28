@@ -1,0 +1,3289 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>File Explorer</title>
+    <script>
+      // Create global exports object to satisfy the module
+      window.exports = {};
+      window.module = { exports: exports };
+    </script>
+    <!-- Pyodide Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pyodide/0.23.4/pyodide.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/JSCPP@2.0.6/dist/JSCPP.es5.min.js"></script>
+    <style>
+      :root {
+        --primary: #4361ee;
+        --secondary: #3f37c9;
+        --success: #4cc9f0;
+        --light: #f8f9fa;
+        --dark: #212529;
+        --gray: #6c757d;
+        --border-radius: 8px;
+        --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        --transition: all 0.3s ease;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      body {
+        background-color: #f5f7fa;
+        color: var(--dark);
+        overflow-x: hidden;
+      }
+
+      .container {
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        grid-template-rows: 60px 1fr 30px;
+        grid-template-areas:
+          "header header"
+          "sidebar main"
+          "footer footer";
+        height: 100vh;
+        width: 100vw;
+      }
+
+      .header {
+        grid-area: header;
+        background-color: var(--primary);
+        color: white;
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        box-shadow: var(--box-shadow);
+        z-index: 10;
+      }
+
+      .header h1 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-left: 10px;
+      }
+
+      .logo {
+        display: flex;
+        align-items: center;
+      }
+
+      .logo svg {
+        width: 24px;
+        height: 24px;
+        fill: white;
+      }
+
+      .connection-status {
+        margin-left: auto;
+        font-size: 0.9rem;
+        display: flex;
+        align-items: center;
+      }
+
+      .status-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background-color: #dc3545;
+        margin-right: 10px;
+        transition: var(--transition);
+      }
+
+      .status-indicator.connected {
+        background-color: #28a745;
+      }
+
+      .sidebar {
+        grid-area: sidebar;
+        background-color: white;
+        border-right: 1px solid #e9ecef;
+        padding: 20px;
+        overflow-y: auto;
+      }
+
+      .connection-form {
+        margin-bottom: 20px;
+      }
+
+      .form-group {
+        margin-bottom: 15px;
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: var(--gray);
+        font-size: 0.9rem;
+      }
+
+      .form-control {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ced4da;
+        border-radius: var(--border-radius);
+        transition: var(--transition);
+        font-size: 0.9rem;
+      }
+
+      .form-control:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.25);
+      }
+
+      .btn {
+        padding: 10px 15px;
+        border: none;
+        border-radius: var(--border-radius);
+        cursor: pointer;
+        transition: var(--transition);
+        font-weight: 500;
+        font-size: 0.9rem;
+      }
+
+      .btn-primary {
+        background-color: var(--primary);
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background-color: var(--secondary);
+      }
+
+      .btn-block {
+        display: block;
+        width: 100%;
+      }
+
+      .directory-tree {
+        margin-top: 20px;
+      }
+
+      .directory-tree h3 {
+        font-size: 1rem;
+        margin-bottom: 10px;
+        color: var(--gray);
+      }
+
+      .tree-view {
+        list-style: none;
+      }
+
+      .tree-item {
+        padding: 8px;
+        cursor: pointer;
+        border-radius: var(--border-radius);
+        transition: var(--transition);
+        margin-bottom: 2px;
+        display: flex;
+        align-items: center;
+      }
+
+      .tree-item:hover {
+        background-color: #f8f9fa;
+      }
+
+      .tree-item.active {
+        background-color: rgba(67, 97, 238, 0.1);
+        color: var(--primary);
+      }
+
+      .tree-item svg {
+        margin-right: 8px;
+        width: 16px;
+        height: 16px;
+      }
+
+      .tree-folder svg {
+        fill: #ffc107;
+      }
+
+      .tree-file svg {
+        fill: var(--gray);
+      }
+
+      .main {
+        grid-area: main;
+        padding: 20px;
+        overflow-y: auto;
+      }
+
+      .breadcrumb {
+        display: flex;
+        align-items: center;
+        margin-bottom: 20px;
+        font-size: 0.9rem;
+      }
+
+      .breadcrumb-item {
+        display: flex;
+        align-items: center;
+      }
+
+      .breadcrumb-item:not(:last-child)::after {
+        content: "/";
+        margin: 0 8px;
+        color: var(--gray);
+      }
+
+      .breadcrumb-item a {
+        color: var(--primary);
+        text-decoration: none;
+      }
+
+      .breadcrumb-item:last-child {
+        color: var(--gray);
+      }
+
+      .file-explorer {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 15px;
+      }
+
+      .file-item {
+        background-color: white;
+        border-radius: var(--border-radius);
+        padding: 15px;
+        text-align: center;
+        cursor: pointer;
+        transition: var(--transition);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+      }
+
+      .file-item:hover {
+        box-shadow: var(--box-shadow);
+        transform: translateY(-2px);
+      }
+
+      .file-icon {
+        width: 48px;
+        height: 48px;
+        margin: 0 auto 10px;
+      }
+
+      .file-icon svg {
+        width: 100%;
+        height: 100%;
+      }
+
+      .folder-icon svg {
+        fill: #ffc107;
+      }
+
+      .file-icon.python svg {
+        fill: #3776ab;
+      }
+
+      .file-icon.text svg {
+        fill: #6c757d;
+      }
+
+      .file-icon.image svg {
+        fill: #20c997;
+      }
+
+      .file-name {
+        font-size: 0.9rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .file-preview {
+        margin-top: 20px;
+        display: none;
+      }
+
+      .file-preview.active {
+        display: block;
+      }
+
+      .preview-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+      }
+
+      .preview-title {
+        font-size: 1.2rem;
+        font-weight: 500;
+      }
+
+      .preview-actions {
+        display: flex;
+        gap: 10px;
+      }
+
+      .preview-editor {
+        border: 1px solid #ced4da;
+        border-radius: var(--border-radius);
+        height: 500px;
+        overflow: auto;
+      }
+
+      .editor-container {
+        height: 100%;
+        width: 100%;
+      }
+
+      .code-editor {
+        height: 100%;
+        width: 100%;
+        font-family: "Consolas", "Courier New", monospace;
+        padding: 10px;
+        resize: none;
+        border: none;
+        outline: none;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .image-preview {
+        max-width: 100%;
+        max-height: 400px;
+        margin: 0 auto;
+        display: block;
+      }
+
+      .run-output {
+        background-color: #212529;
+        color: #f8f9fa;
+        padding: 15px;
+        border-radius: var(--border-radius);
+        font-family: "Consolas", "Courier New", monospace;
+        margin-top: 20px;
+        display: none;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+
+      .run-output.active {
+        display: block;
+      }
+
+      .footer {
+        grid-area: footer;
+        background-color: var(--light);
+        border-top: 1px solid #e9ecef;
+        padding: 0 20px;
+        display: flex;
+        align-items: center;
+        font-size: 0.8rem;
+        color: var(--gray);
+      }
+
+      /* Modal */
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 100;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+      }
+
+      .modal.active {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .modal-content {
+        background-color: white;
+        border-radius: var(--border-radius);
+        width: 400px;
+        max-width: 90%;
+        box-shadow: var(--box-shadow);
+        animation: modalFadeIn 0.3s;
+      }
+
+      @keyframes modalFadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .modal-header {
+        padding: 15px 20px;
+        border-bottom: 1px solid #e9ecef;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .modal-title {
+        font-size: 1.1rem;
+        font-weight: 500;
+      }
+
+      .modal-close {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.5rem;
+        color: var(--gray);
+        transition: var(--transition);
+      }
+
+      .modal-close:hover {
+        color: var(--dark);
+      }
+
+      .modal-body {
+        padding: 20px;
+      }
+
+      .modal-footer {
+        padding: 15px 20px;
+        border-top: 1px solid #e9ecef;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+
+      /* Loading indicator */
+      .spinner {
+        width: 24px;
+        height: 24px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: white;
+        animation: spin 1s ease-in-out infinite;
+        margin-right: 10px;
+        display: none;
+      }
+
+      .btn-loading .spinner {
+        display: inline-block;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* Toast notifications */
+      .toast-container {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 1000;
+      }
+
+      .toast {
+        background-color: white;
+        border-radius: var(--border-radius);
+        padding: 15px 20px;
+        box-shadow: var(--box-shadow);
+        margin-top: 10px;
+        display: flex;
+        align-items: center;
+        animation: toastFadeIn 0.3s;
+        max-width: 350px;
+      }
+
+      @keyframes toastFadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .toast.success {
+        border-left: 4px solid #28a745;
+      }
+
+      .toast.error {
+        border-left: 4px solid #dc3545;
+      }
+
+      .toast.info {
+        border-left: 4px solid var(--primary);
+      }
+
+      .toast-icon {
+        margin-right: 10px;
+      }
+
+      .toast-content {
+        flex: 1;
+      }
+
+      .toast-title {
+        font-weight: 500;
+        margin-bottom: 5px;
+      }
+
+      .toast-message {
+        font-size: 0.9rem;
+        color: var(--gray);
+      }
+
+      .main-actions {
+        margin-bottom: 15px;
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .btn-danger {
+        background-color: #dc3545;
+        color: white;
+      }
+
+      .btn-danger:hover {
+        background-color: #bd2130;
+      }
+
+      .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+      }
+
+      .btn-secondary:hover {
+        background-color: #5a6268;
+      }
+
+      .text-danger {
+        color: #dc3545;
+      }
+
+      .btn:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
+
+      .execution-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-top: 20px;
+      }
+
+      .run-output {
+        background-color: #212529;
+        color: #f8f9fa;
+        padding: 15px;
+        border-radius: var(--border-radius);
+        font-family: "Consolas", "Courier New", monospace;
+        display: none;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .graph-output {
+        display: none;
+        background-color: white;
+        border-radius: var(--border-radius);
+        padding: 15px;
+        border: 1px solid #e9ecef;
+        text-align: center;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      .run-output.active,
+      .graph-output.active {
+        display: block;
+      }
+
+      @media (max-width: 768px) {
+        .execution-container {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .graph-title {
+        font-size: 0.9rem;
+        color: var(--gray);
+        margin-bottom: 10px;
+        text-align: center;
+      }
+
+      .no-graphs-message {
+        color: var(--gray);
+        font-style: italic;
+        text-align: center;
+        margin-top: 20px;
+      }
+
+      .matplotlib-figure {
+        max-width: 100%;
+        border: 1px solid #ddd;
+        background-color: white;
+        border-radius: var(--border-radius);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        margin-bottom: 15px;
+      }
+
+      .execution-container {
+        display: grid;
+        grid-template-columns: 1fr; /* Start with one column */
+        gap: 15px;
+        margin-top: 20px;
+      }
+
+      /* When graphs are active, switch to two columns */
+      .execution-container.has-graphs {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .run-output {
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div class="logo">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path
+              d="M20 6h-3V4c0-1.103-.897-2-2-2H9c-1.103 0-2 .897-2 2v2H4c-1.103 0-2 .897-2 2v11c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V8c0-1.103-.897-2-2-2zM9 4h6v2H9V4zM4 8h16v4h-3v-2h-2v2H9v-2H7v2H4V8zm16 11H4v-5h3v2h2v-2h6v2h2v-2h3v5z"
+            ></path>
+          </svg>
+          <h1>File Explorer</h1>
+        </div>
+        <div class="connection-status">
+          <div class="status-indicator"></div>
+          <span id="status-text">Disconnected</span>
+        </div>
+      </header>
+
+      <aside class="sidebar">
+        <div class="connection-form">
+          <button id="connect-btn" class="btn btn-primary btn-block">
+            <div class="spinner"></div>
+            <span>Connect to Server</span>
+          </button>
+        </div>
+
+        <div class="directory-tree">
+          <h3>Directory Tree</h3>
+          <ul class="tree-view" id="directory-tree">
+            <li class="tree-item tree-folder active">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path
+                  d="M20 5h-9.586L8.707 3.293A.997.997 0 0 0 8 3H4c-1.103 0-2 .897-2 2v14c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V7c0-1.103-.897-2-2-2z"
+                />
+              </svg>
+              <span>/</span>
+            </li>
+          </ul>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="breadcrumb">
+          <div class="breadcrumb-item">
+            <a href="#">/</a>
+          </div>
+        </div>
+
+        <div class="main-actions">
+          <button class="btn btn-primary" id="new-file-btn">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              style="margin-right: 5px"
+            >
+              <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"></path>
+            </svg>
+            New File
+          </button>
+          <button
+            class="btn btn-primary"
+            id="new-directory-btn"
+            style="margin-left: 10px"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              style="margin-right: 5px"
+            >
+              <path
+                d="M20 5h-9.586L8.707 3.293A.997.997 0 0 0 8 3H4c-1.103 0-2 .897-2 2v14c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V7c0-1.103-.897-2-2-2zM4 19V5h16l.002 14H4z"
+              ></path>
+              <path d="M13 14h-2v-3H8v-2h3V6h2v3h3v2h-3z"></path>
+            </svg>
+            New Directory
+          </button>
+        </div>
+
+        <div class="modal" id="new-directory-modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 class="modal-title">Create New Directory</h3>
+              <button class="modal-close" id="new-directory-modal-close">
+                &times;
+              </button>
+            </div>
+            <div class="modal-body">
+              <div class="form-group">
+                <label for="new-directory-name">Directory Name</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="new-directory-name"
+                  placeholder="Enter directory name"
+                />
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" id="new-directory-cancel">
+                Cancel
+              </button>
+              <button class="btn btn-primary" id="new-directory-create">
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal" id="delete-directory-modal">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h3 class="modal-title">Delete Directory</h3>
+              <button class="modal-close" id="delete-directory-modal-close">
+                &times;
+              </button>
+            </div>
+            <div class="modal-body">
+              <p>
+                Are you sure you want to delete directory
+                <span id="delete-directory-name"></span>?
+              </p>
+              <p class="text-danger">
+                This action cannot be undone and will delete all contents within
+                this directory.
+              </p>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary" id="delete-directory-cancel">
+                Cancel
+              </button>
+              <button class="btn btn-danger" id="delete-directory-confirm">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="file-explorer" id="file-explorer">
+          <!-- Files will be dynamically added here -->
+        </div>
+
+        <div class="file-preview" id="file-preview">
+          <div class="preview-header">
+            <h2 class="preview-title" id="preview-title">File Preview</h2>
+            <div class="preview-actions">
+              <button class="btn btn-primary" id="save-btn">Save</button>
+              <button class="btn btn-primary" id="run-btn">Run</button>
+              <button class="btn btn-danger" id="delete-btn">Delete</button>
+            </div>
+          </div>
+          <div class="preview-editor">
+            <div class="editor-container">
+              <textarea class="code-editor" id="code-editor"></textarea>
+            </div>
+            <img
+              class="image-preview"
+              id="image-preview"
+              style="display: none"
+            />
+          </div>
+          <div class="execution-container">
+            <div class="run-output" id="run-output">
+              <!-- Output will be displayed here -->
+            </div>
+            <div class="graph-output" id="graph-output">
+              <!-- Matplotlib graphs will be displayed here -->
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <footer class="footer">
+        <span>© 2025 FTP Explorer • <a href="#" id="about-link">About</a></span>
+      </footer>
+    </div>
+
+    <div class="modal" id="about-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 class="modal-title">About File Explorer</h3>
+          <button class="modal-close" id="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>
+            File Explorer is a modern web-based client that allows you to
+            browse, edit, and run files on your server.
+          </p>
+          <p>
+            <strong>Server Connection:</strong> The app connects to your server
+            at 192.168.0.147:5000 using REST API endpoints to list, download,
+            and upload files.
+          </p>
+          <p>
+            <strong>Python Execution:</strong> This app uses Pyodide (Python
+            compiled to WebAssembly) to run real Python code directly in your
+            browser! You can write and execute Python scripts with support for
+            NumPy, Pandas, and other scientific libraries.
+          </p>
+          <p>Features:</p>
+          <ul>
+            <li>Browse server files and directories</li>
+            <li>Edit text and code files</li>
+            <li>Upload changes back to the server</li>
+            <li>Run real Python scripts in the browser</li>
+            <li>NumPy and Pandas support</li>
+            <li>Responsive design</li>
+          </ul>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" id="modal-ok">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="new-file-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 class="modal-title">Create New File</h3>
+          <button class="modal-close" id="new-file-modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="new-file-name">File Name</label>
+            <input
+              type="text"
+              class="form-control"
+              id="new-file-name"
+              placeholder="Enter file name"
+            />
+          </div>
+          <div class="form-group">
+            <label for="new-file-type">File Type</label>
+            <select class="form-control" id="new-file-type">
+              <option value="text">Text File</option>
+              <option value="python">Python Script</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="new-file-cancel">Cancel</button>
+          <button class="btn btn-primary" id="new-file-create">Create</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="delete-file-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 class="modal-title">Delete File</h3>
+          <button class="modal-close" id="delete-file-modal-close">
+            &times;
+          </button>
+        </div>
+        <div class="modal-body">
+          <p>
+            Are you sure you want to delete <span id="delete-file-name"></span>?
+          </p>
+          <p class="text-danger">This action cannot be undone.</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="delete-file-cancel">
+            Cancel
+          </button>
+          <button class="btn btn-danger" id="delete-file-confirm">
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast-container" id="toast-container">
+      <!-- Toast notifications will be added here -->
+    </div>
+
+    <script>
+      // Add CSS for directory items with improved hover behavior
+      const directoryCss = document.createElement("style");
+      directoryCss.textContent = `
+    .file-item {
+      position: relative;
+    }
+    
+    .file-item:hover .directory-actions {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+    
+    .directory-actions {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      display: none;
+      z-index: 100;
+    }
+    
+    .btn-sm {
+      padding: 2px 6px;
+      font-size: 12px;
+      line-height: 1;
+    }
+    
+    .btn-sm.btn-danger {
+      background-color: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 3px;
+    }
+    
+    .btn-sm.btn-danger:hover {
+      background-color: #bd2130;
+    }
+  `;
+      document.head.appendChild(directoryCss);
+
+      // DOM Elements for New Directory
+      const newDirectoryBtn = document.getElementById("new-directory-btn");
+      const newDirectoryModal = document.getElementById("new-directory-modal");
+      const newDirectoryModalClose = document.getElementById(
+        "new-directory-modal-close"
+      );
+      const newDirectoryCancel = document.getElementById(
+        "new-directory-cancel"
+      );
+      const newDirectoryCreate = document.getElementById(
+        "new-directory-create"
+      );
+      const newDirectoryName = document.getElementById("new-directory-name");
+
+      // DOM Elements for Delete Directory
+      const deleteDirectoryModal = document.getElementById(
+        "delete-directory-modal"
+      );
+      const deleteDirectoryModalClose = document.getElementById(
+        "delete-directory-modal-close"
+      );
+      const deleteDirectoryCancel = document.getElementById(
+        "delete-directory-cancel"
+      );
+      const deleteDirectoryConfirm = document.getElementById(
+        "delete-directory-confirm"
+      );
+      const deleteDirectoryName = document.getElementById(
+        "delete-directory-name"
+      );
+
+      let currentDirectory = null;
+
+      // Function definition for adding directory controls - Define this BEFORE using it
+      function addDirectoryControls() {
+        // Find all folder items
+        const folderItems = document.querySelectorAll(".file-item");
+
+        folderItems.forEach((item) => {
+          const iconElement = item.querySelector(".file-icon");
+          const nameElement = item.querySelector(".file-name");
+
+          // Check if this is a folder (not parent directory)
+          if (
+            iconElement &&
+            iconElement.classList.contains("folder-icon") &&
+            nameElement &&
+            nameElement.textContent !== ".."
+          ) {
+            // Check if delete button already exists to avoid duplicates
+            if (item.querySelector(".dir-delete-btn")) {
+              return; // Skip if button already exists
+            }
+
+            // Create a delete button
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className = "dir-delete-btn";
+            deleteBtn.innerHTML = "×";
+            deleteBtn.title = "Delete Directory";
+            deleteBtn.style.position = "absolute";
+            deleteBtn.style.top = "5px";
+            deleteBtn.style.right = "5px";
+            deleteBtn.style.zIndex = "9999";
+            deleteBtn.style.backgroundColor = "#dc3545";
+            deleteBtn.style.color = "white";
+            deleteBtn.style.border = "none";
+            deleteBtn.style.borderRadius = "50%";
+            deleteBtn.style.width = "20px";
+            deleteBtn.style.height = "20px";
+            deleteBtn.style.lineHeight = "1";
+            deleteBtn.style.padding = "0";
+            deleteBtn.style.cursor = "pointer";
+            deleteBtn.style.display = "none"; // Initially hidden
+
+            // Store the directory info on the button itself
+            const dirName = nameElement.textContent;
+            const dirPath =
+              currentPath === "/" ? `/${dirName}` : `${currentPath}/${dirName}`;
+            deleteBtn.dataset.dirName = dirName;
+            deleteBtn.dataset.dirPath = dirPath;
+
+            // Show/hide on hover
+            item.addEventListener(
+              "mouseenter",
+              () => (deleteBtn.style.display = "block")
+            );
+            item.addEventListener(
+              "mouseleave",
+              () => (deleteBtn.style.display = "none")
+            );
+
+            // Handle delete click
+            deleteBtn.addEventListener("click", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+
+              // Set currentDirectory using the data stored on the button
+              currentDirectory = {
+                name: deleteBtn.dataset.dirName,
+                path: deleteBtn.dataset.dirPath,
+              };
+
+              // Show delete directory modal
+              deleteDirectoryName.textContent = deleteBtn.dataset.dirName;
+              deleteDirectoryModal.classList.add("active");
+
+              return false;
+            });
+
+            // Add button to the item
+            item.appendChild(deleteBtn);
+          }
+        });
+      }
+
+      // Open new directory modal
+      newDirectoryBtn.addEventListener("click", () => {
+        newDirectoryName.value = "";
+        newDirectoryModal.classList.add("active");
+        newDirectoryName.focus();
+      });
+
+      // Close new directory modal
+      newDirectoryModalClose.addEventListener("click", () => {
+        newDirectoryModal.classList.remove("active");
+      });
+
+      newDirectoryCancel.addEventListener("click", () => {
+        newDirectoryModal.classList.remove("active");
+      });
+
+      // Create new directory
+      newDirectoryCreate.addEventListener("click", () => {
+        const dirName = newDirectoryName.value.trim();
+
+        if (!dirName) {
+          showToast("Error", "Please enter a directory name", "error");
+          return;
+        }
+
+        // Create the directory path
+        const dirPath =
+          currentPath === "/" ? `/${dirName}` : `${currentPath}/${dirName}`;
+
+        // Check if we're in demo mode
+        if (isConnected && statusText.textContent.includes("Demo")) {
+          // For demo mode, create directory in the demo data structure
+          if (!demoSubDirs[dirPath]) {
+            demoSubDirs[dirPath] = [];
+          }
+
+          // Add the directory to the current directory listing
+          if (currentPath === "/") {
+            demoFiles.push({
+              name: dirName,
+              type: "folder",
+              path: dirPath,
+            });
+          } else {
+            if (!demoSubDirs[currentPath]) {
+              demoSubDirs[currentPath] = [];
+            }
+            demoSubDirs[currentPath].push({
+              name: dirName,
+              type: "folder",
+              path: dirPath,
+            });
+          }
+
+          // Refresh directory view
+          loadDirectory(currentPath);
+          showToast(
+            "Success",
+            `Directory "${dirName}" created successfully`,
+            "success"
+          );
+        } else {
+          // For real server - Create directory via API
+          fetch(`${SERVER_URL}/directories${dirPath}`, {
+            method: "POST",
+          })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+              }
+              return response.json();
+            })
+            .then((data) => {
+              // Refresh the directory listing
+              navigateToDirectory(currentPath);
+              showToast(
+                "Success",
+                `Directory "${dirName}" created successfully`,
+                "success"
+              );
+            })
+            .catch((error) => {
+              showToast(
+                "Error",
+                `Failed to create directory: ${error.message}`,
+                "error"
+              );
+            });
+        }
+
+        // Close the modal
+        newDirectoryModal.classList.remove("active");
+      });
+
+      // Delete directory
+      deleteDirectoryConfirm.addEventListener("click", () => {
+        // Make a local copy of the currentDirectory to prevent null issues
+        const dirToDelete = currentDirectory ? { ...currentDirectory } : null;
+
+        if (!dirToDelete) {
+          showToast("Error", "No directory selected for deletion", "error");
+          deleteDirectoryModal.classList.remove("active");
+          return;
+        }
+
+        const dirPath = dirToDelete.path;
+        const dirName = dirToDelete.name;
+
+        // Check if we're in demo mode
+        if (isConnected && statusText.textContent.includes("Demo")) {
+          // For demo mode, remove from the demo structure
+          if (currentPath === "/") {
+            const index = demoFiles.findIndex((file) => file.path === dirPath);
+            if (index !== -1) {
+              demoFiles.splice(index, 1);
+            }
+          } else {
+            if (demoSubDirs[currentPath]) {
+              const index = demoSubDirs[currentPath].findIndex(
+                (file) => file.path === dirPath
+              );
+              if (index !== -1) {
+                demoSubDirs[currentPath].splice(index, 1);
+              }
+            }
+          }
+
+          // Remove the subdirectory entry
+          delete demoSubDirs[dirPath];
+
+          // Refresh directory view
+          loadDirectory(currentPath);
+          showToast(
+            "Success",
+            `Directory "${dirName}" deleted successfully`,
+            "success"
+          );
+        } else {
+          // For real server - Delete directory via API
+          fetch(`${SERVER_URL}/directories${dirPath}`, {
+            method: "DELETE",
+          })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+              }
+              return response.json();
+            })
+            .then((data) => {
+              // Refresh the directory listing
+              navigateToDirectory(currentPath);
+              showToast(
+                "Success",
+                `Directory "${dirName}" deleted successfully`,
+                "success"
+              );
+            })
+            .catch((error) => {
+              showToast(
+                "Error",
+                `Failed to delete directory: ${error.message}`,
+                "error"
+              );
+            });
+        }
+
+        // Close the modal
+        deleteDirectoryModal.classList.remove("active");
+        currentDirectory = null;
+      });
+
+      // Close delete directory modal
+      deleteDirectoryModalClose.addEventListener("click", () => {
+        deleteDirectoryModal.classList.remove("active");
+        currentDirectory = null;
+      });
+
+      deleteDirectoryCancel.addEventListener("click", () => {
+        deleteDirectoryModal.classList.remove("active");
+        currentDirectory = null;
+      });
+
+      // Create a simple wrapper for JSCPP
+      const CppRunner = {
+        init: function () {
+          // Check if JSCPP is loaded
+          if (typeof JSCPP === "undefined") {
+            console.error("JSCPP library not loaded!");
+            return Promise.reject(new Error("JSCPP library not loaded"));
+          }
+
+          console.log("C/C++ interpreter initialized");
+          return Promise.resolve();
+        },
+
+        execute: function (code, isC = false) {
+          return new Promise((resolve) => {
+            console.log(
+              `Executing ${isC ? "C" : "C++"} code through JSCPP interpreter`
+            );
+
+            let output = "";
+
+            // Configure JSCPP options
+            const config = {
+              stdio: {
+                write: function (s) {
+                  // This captures printf/cout output
+                  output += s;
+                  return s;
+                },
+              },
+              unsigned_overflow: "warn", // Options: "error", "warn", "ignore"
+            };
+
+            try {
+              // Use the JSCPP library to interpret the code
+              console.log(code);
+              console.log(config);
+              const exitCode = JSCPP.run(code, "", config);
+
+              resolve({
+                success: true,
+                output: output,
+                exitCode: exitCode,
+              });
+            } catch (error) {
+              resolve({
+                success: false,
+                output: output,
+                errors: error.message,
+                exitCode: 1,
+              });
+            }
+          });
+        },
+      };
+
+      // Make it available globally
+      window.CppRunner = CppRunner;
+
+      // Demo data - in a real application, this would come from the server
+      const demoFiles = [
+        { name: "data", type: "folder", path: "/data" },
+        { name: "scripts", type: "folder", path: "/scripts" },
+        { name: "images", type: "folder", path: "/images" },
+        {
+          name: "README.txt",
+          type: "text",
+          path: "/README.txt",
+          content:
+            "Welcome to the FTP server!\n\nThis server contains various files and folders for demonstration purposes.",
+        },
+        {
+          name: "hello.py",
+          type: "python",
+          path: "/hello.py",
+          content:
+            'print("Hello, World!")\n\n# This is a simple Python script\nname = input("What is your name? ")\nprint(f"Nice to meet you, {name}!")',
+        },
+      ];
+
+      const demoSubDirs = {
+        "/data": [
+          {
+            name: "users.csv",
+            type: "text",
+            path: "/data/users.csv",
+            content:
+              "id,name,email\n1,John Doe,john@example.com\n2,Jane Smith,jane@example.com\n3,Bob Johnson,bob@example.com",
+          },
+          {
+            name: "config.json",
+            type: "text",
+            path: "/data/config.json",
+            content:
+              '{\n  "server": {\n    "port": 8080,\n    "host": "localhost"\n  },\n  "database": {\n    "user": "admin",\n    "password": "******",\n    "name": "app_db"\n  }\n}',
+          },
+        ],
+        "/scripts": [
+          {
+            name: "data_analysis.py",
+            type: "python",
+            path: "/scripts/data_analysis.py",
+            content:
+              'import pandas as pd\nimport matplotlib.pyplot as plt\n\n# Load data\ndata = pd.read_csv("../data/users.csv")\n\n# Analyze data\nprint(f"Total users: {len(data)}")\n\n# Generate a simple plot\nplt.figure(figsize=(10, 6))\nplt.bar(data["name"], data.index)\nplt.title("User Analysis")\nplt.xlabel("User")\nplt.ylabel("ID")\nplt.savefig("../images/user_analysis.png")\nprint("Analysis complete!")',
+          },
+          {
+            name: "utilities.py",
+            type: "python",
+            path: "/scripts/utilities.py",
+            content:
+              'def greet(name):\n    """Simple greeting function"""\n    return f"Hello, {name}!"\n\ndef calculate_sum(numbers):\n    """Calculate the sum of a list of numbers"""\n    return sum(numbers)\n\ndef is_prime(num):\n    """Check if a number is prime"""\n    if num < 2:\n        return False\n    for i in range(2, int(num**0.5) + 1):\n        if num % i == 0:\n            return False\n    return True',
+          },
+        ],
+        "/images": [
+          {
+            name: "placeholder.png",
+            type: "image",
+            path: "/images/placeholder.png",
+          },
+        ],
+      };
+
+      // DOM Elements
+      const connectBtn = document.getElementById("connect-btn");
+      const statusIndicator = document.querySelector(".status-indicator");
+      const statusText = document.getElementById("status-text");
+      const directoryTree = document.getElementById("directory-tree");
+      const fileExplorer = document.getElementById("file-explorer");
+      const breadcrumb = document.querySelector(".breadcrumb");
+      const filePreview = document.getElementById("file-preview");
+      const previewTitle = document.getElementById("preview-title");
+      const codeEditor = document.getElementById("code-editor");
+      const imagePreview = document.getElementById("image-preview");
+      const saveBtn = document.getElementById("save-btn");
+      const runBtn = document.getElementById("run-btn");
+      const runOutput = document.getElementById("run-output");
+      const aboutLink = document.getElementById("about-link");
+      const aboutModal = document.getElementById("about-modal");
+      const modalClose = document.getElementById("modal-close");
+      const modalOk = document.getElementById("modal-ok");
+      const toastContainer = document.getElementById("toast-container");
+      const newFileBtn = document.getElementById("new-file-btn");
+      const newFileModal = document.getElementById("new-file-modal");
+      const newFileModalClose = document.getElementById("new-file-modal-close");
+      const newFileCancel = document.getElementById("new-file-cancel");
+      const newFileCreate = document.getElementById("new-file-create");
+      const newFileName = document.getElementById("new-file-name");
+      const newFileType = document.getElementById("new-file-type");
+      const deleteBtn = document.getElementById("delete-btn");
+      const deleteFileModal = document.getElementById("delete-file-modal");
+      const deleteFileModalClose = document.getElementById(
+        "delete-file-modal-close"
+      );
+      const deleteFileCancel = document.getElementById("delete-file-cancel");
+      const deleteFileConfirm = document.getElementById("delete-file-confirm");
+      const deleteFileName = document.getElementById("delete-file-name");
+
+      // Current state
+      let currentPath = "/";
+      let currentFile = null;
+      let isConnected = false;
+
+      // Server configuration
+      const SERVER_URL = "https://fileapi.hoko.xyz"; // Updated to port 5001
+
+      // Connect to server
+      connectBtn.addEventListener("click", () => {
+        // Reset discovered directories
+        discoveredDirectories = new Set(["/"]);
+        // Show loading
+        connectBtn.classList.add("btn-loading");
+
+        // Fetch directory listing from the server
+        fetch(`${SERVER_URL}/directories`)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`HTTP error ${response.status}`);
+            }
+            return response.json();
+          })
+          .then((data) => {
+            isConnected = true;
+            statusIndicator.classList.add("connected");
+            statusText.textContent = "Connected";
+            connectBtn.classList.remove("btn-loading");
+
+            showToast("Success", "Connected to server", "success");
+
+            // Store current path
+            currentPath = "/";
+
+            // Load files from the response
+            loadFilesFromResponse(data, currentPath);
+
+            // Add this line to update the directory tree
+            updateDirectoryTree(currentPath);
+          })
+          .catch((error) => {
+            connectBtn.classList.remove("btn-loading");
+            showToast("Error", `Connection failed: ${error.message}`, "error");
+            console.error("Connection error:", error);
+
+            // For demo/testing purposes, load demo files if connection fails
+            if (
+              window.location.hostname === "localhost" ||
+              window.location.hostname === "127.0.0.1" ||
+              !window.location.hostname
+            ) {
+              showToast(
+                "Info",
+                "Loading demo data for testing purposes",
+                "info"
+              );
+              isConnected = true;
+              statusIndicator.classList.add("connected");
+              statusText.textContent = "Connected (Demo Mode)";
+              loadDirectory("/");
+            }
+          });
+      });
+
+      // Load files from API response
+      function loadFilesFromResponse(files, path) {
+        // Clear file explorer
+        fileExplorer.innerHTML = "";
+
+        // Update breadcrumb
+        updateBreadcrumb(path);
+
+        // Add current path to discovered directories
+        if (path !== "/" && !discoveredDirectories.has(path)) {
+          discoveredDirectories.add(path);
+        }
+
+        // Add parent directory if not at root
+        if (path !== "/" && path !== "") {
+          const parentPath = path.substring(0, path.lastIndexOf("/"));
+          const parentDir = parentPath === "" ? "/" : parentPath;
+
+          const parentItem = document.createElement("div");
+          parentItem.className = "file-item";
+          parentItem.innerHTML = `
+      <div class="file-icon folder-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M20 5h-9.586L8.707 3.293A.997.997 0 0 0 8 3H4c-1.103 0-2 .897-2 2v14c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V7c0-1.103-.897-2-2-2z"/>
+        </svg>
+      </div>
+      <div class="file-name">..</div>
+    `;
+
+          parentItem.addEventListener("click", () => {
+            navigateToDirectory(parentDir);
+          });
+
+          fileExplorer.appendChild(parentItem);
+        }
+
+        // Process files and display them
+        files.forEach((filename) => {
+          // Determine if it's likely a directory (no extension) or a file
+          // This is a heuristic since the API doesn't differentiate
+          const isLikelyDirectory =
+            !filename.includes(".") || filename.endsWith("/");
+          const displayName = filename.endsWith("/")
+            ? filename.slice(0, -1)
+            : filename;
+
+          // If it's a directory, add it to our discovered directories
+          if (isLikelyDirectory) {
+            const dirPath =
+              path === "/" ? `/${displayName}` : `${path}/${displayName}`;
+            if (!discoveredDirectories.has(dirPath)) {
+              discoveredDirectories.add(dirPath);
+            }
+          }
+
+          const fileItem = document.createElement("div");
+          fileItem.className = "file-item";
+
+          const type = isLikelyDirectory
+            ? "folder"
+            : getFileTypeFromName(filename);
+          fileItem.innerHTML = `
+      <div class="file-icon ${type}-icon">
+        ${getFileIcon(type)}
+      </div>
+      <div class="file-name">${displayName}</div>
+    `;
+
+          fileItem.addEventListener("click", () => {
+            if (isLikelyDirectory) {
+              // For directories, navigate to that directory
+              let directoryPath =
+                path === "/" ? `/${displayName}` : `${path}/${displayName}`;
+              navigateToDirectory(directoryPath);
+            } else {
+              // For files, download and open the file
+              let filePath = path === "/" ? filename : `${path}/${filename}`;
+              downloadAndOpenFile(filePath);
+            }
+          });
+
+          fileExplorer.appendChild(fileItem);
+        });
+
+        // Now update the directory tree with our discovered directories
+        updateDirectoryTree(path);
+      }
+
+      // Navigate to a directory
+      function navigateToDirectory(directoryPath) {
+        // Clean up the path (remove double slashes, etc)
+        directoryPath = normalizePath(directoryPath);
+
+        // Save current path to localStorage
+        localStorage.setItem("lastDirectory", directoryPath);
+
+        console.log("Navigating to directory:", directoryPath);
+
+        // For demo mode, use the existing function
+        if (isConnected && statusText.textContent.includes("Demo")) {
+          console.log("Using demo mode navigation");
+          loadDirectory(directoryPath);
+          return;
+        }
+
+        // For real server
+        fetch(`${SERVER_URL}/directories/${directoryPath}`)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`HTTP error ${response.status}`);
+            }
+            return response.json();
+          })
+          .then((data) => {
+            console.log("Directory data received:", data);
+            currentPath = directoryPath;
+            loadFilesFromResponse(data, directoryPath);
+            updateDirectoryTree(directoryPath);
+
+            // Make sure the view is updated
+            fileExplorer.style.display = "grid";
+            if (filePreview.classList.contains("active")) {
+              filePreview.classList.remove("active");
+            }
+          })
+          .catch((error) => {
+            console.error("Directory navigation error:", error);
+            showToast(
+              "Error",
+              `Failed to load directory: ${error.message}`,
+              "error"
+            );
+
+            // If navigation fails, try falling back to root
+            if (directoryPath !== "/") {
+              console.log("Falling back to root directory");
+              navigateToDirectory("/");
+            }
+          });
+      }
+
+      // Normalize a path (remove double slashes, etc)
+      function normalizePath(path) {
+        // Remove trailing slash except for root
+        if (path !== "/" && path.endsWith("/")) {
+          path = path.slice(0, -1);
+        }
+
+        // Handle path components
+        const parts = path.split("/").filter((part) => part.length > 0);
+        const normalizedParts = [];
+
+        for (const part of parts) {
+          if (part === ".") continue;
+          if (part === "..") {
+            normalizedParts.pop();
+            continue;
+          }
+          normalizedParts.push(part);
+        }
+
+        return normalizedParts.length === 0
+          ? ""
+          : "/" + normalizedParts.join("/");
+      }
+
+      // Download and open a file
+      function downloadAndOpenFile(filepath) {
+        fetch(`${SERVER_URL}/files/${filepath}`)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(`HTTP error ${response.status}`);
+            }
+
+            // Check if it's an image
+            const contentType = response.headers.get("content-type");
+            const isImage = contentType && contentType.startsWith("image/");
+
+            if (isImage) {
+              return response.blob().then((blob) => {
+                return { isImage: true, blob };
+              });
+            } else {
+              return response.text().then((text) => {
+                return { isImage: false, text };
+              });
+            }
+          })
+          .then((result) => {
+            // Create a virtual file object
+            const file = {
+              name: filepath.split("/").pop(),
+              type: result.isImage ? "image" : getFileTypeFromName(filepath),
+              path: filepath,
+            };
+
+            if (result.isImage) {
+              file.blob = result.blob;
+            } else {
+              file.content = result.text;
+            }
+
+            // Open the file in the editor
+            openFile(file);
+          })
+          .catch((error) => {
+            showToast(
+              "Error",
+              `Failed to download file: ${error.message}`,
+              "error"
+            );
+          });
+      }
+
+      // Get file type from filename
+      function getFileTypeFromName(filename) {
+        const extension = filename.split(".").pop().toLowerCase();
+
+        if (extension === "py") {
+          return "python";
+        } else if (["js", "jsx", "ts", "json"].includes(extension)) {
+          return "javascript";
+        } else if (["c", "cpp", "h", "hpp"].includes(extension)) {
+          return "cpp";
+        } else if (["md", "markdown"].includes(extension)) {
+          return "markdown";
+        } else if (["jpg", "jpeg", "png", "gif", "svg"].includes(extension)) {
+          return "image";
+        } else {
+          return "text";
+        }
+      }
+
+      // Load directory contents
+      function loadDirectory(path) {
+        console.log("Loading directory in demo mode:", path);
+        currentPath = path;
+
+        // Save current path to localStorage
+        localStorage.setItem("lastDirectory", path);
+
+        updateBreadcrumb(path);
+
+        // Clear file explorer
+        fileExplorer.innerHTML = "";
+
+        // Hide file preview
+        filePreview.classList.remove("active");
+
+        // Simulate loading directory
+        setTimeout(() => {
+          // Get files for the current path
+          const files = path === "/" ? demoFiles : demoSubDirs[path] || [];
+
+          console.log("Demo files for path:", path, files);
+
+          // Add parent directory if not at root
+          if (path !== "/") {
+            const parentPath = path.substring(0, path.lastIndexOf("/"));
+            const parentDir = parentPath === "" ? "/" : parentPath;
+
+            const parentItem = document.createElement("div");
+            parentItem.className = "file-item";
+            parentItem.innerHTML = `
+        <div class="file-icon folder-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M20 5h-9.586L8.707 3.293A.997.997 0 0 0 8 3H4c-1.103 0-2 .897-2 2v14c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V7c0-1.103-.897-2-2-2z"/>
+          </svg>
+        </div>
+        <div class="file-name">..</div>
+      `;
+
+            parentItem.addEventListener("click", () => {
+              loadDirectory(parentDir);
+            });
+
+            fileExplorer.appendChild(parentItem);
+          }
+
+          // Add files and directories
+          files.forEach((file) => {
+            const fileItem = document.createElement("div");
+            fileItem.className = "file-item";
+            fileItem.innerHTML = `
+        <div class="file-icon ${file.type}-icon">
+          ${getFileIcon(file.type)}
+        </div>
+        <div class="file-name">${file.name}</div>
+      `;
+
+            fileItem.addEventListener("click", (event) => {
+              if (
+                event.target === deleteBtn ||
+                event.target.closest(".directory-actions")
+              ) {
+                return; // Don't navigate if clicking the delete button
+              }
+              if (file.type === "folder") {
+                loadDirectory(file.path);
+              } else {
+                openFile(file);
+              }
+            });
+
+            fileExplorer.appendChild(fileItem);
+          });
+
+          // Update tree view
+          updateDirectoryTree(path);
+
+          // Make sure the explorer is visible
+          fileExplorer.style.display = "grid";
+        }, 100);
+      }
+
+      // Update breadcrumb
+      function updateBreadcrumb(path) {
+        breadcrumb.innerHTML = "";
+
+        const parts = path.split("/").filter((part) => part);
+        let currentPath = "";
+
+        // Add root
+        const rootItem = document.createElement("div");
+        rootItem.className = "breadcrumb-item";
+        rootItem.innerHTML = '<a href="#">/</a>';
+        rootItem.addEventListener("click", (e) => {
+          e.preventDefault();
+          navigateToDirectory("/");
+        });
+        breadcrumb.appendChild(rootItem);
+
+        // Add path parts
+        parts.forEach((part, index) => {
+          currentPath += "/" + part;
+
+          const item = document.createElement("div");
+          item.className = "breadcrumb-item";
+
+          if (index === parts.length - 1) {
+            item.textContent = part;
+          } else {
+            const link = document.createElement("a");
+            link.href = "#";
+            link.textContent = part;
+
+            const pathCopy = currentPath;
+            link.addEventListener("click", (e) => {
+              e.preventDefault();
+              navigateToDirectory(pathCopy);
+            });
+
+            item.appendChild(link);
+          }
+
+          breadcrumb.appendChild(item);
+        });
+      }
+      // Add this global variable to track all directories we've encountered
+      let allKnownDirectories = new Map(); // path -> array of subdirectories
+
+      // Enhanced updateDirectoryTree function to show current path, siblings, and contents
+      function updateDirectoryTree(activePath) {
+        // Normalize path for consistency
+        activePath = activePath || "/";
+
+        console.log("Updating tree for path:", activePath);
+
+        // Store current directories in the global map
+        // First, get the files from the relevant data source based on connection mode
+        let currentFiles = [];
+
+        if (isConnected && statusText.textContent.includes("Demo")) {
+          // For demo mode, get files from the demo data structure
+          currentFiles =
+            activePath === "/" ? demoFiles : demoSubDirs[activePath] || [];
+        } else {
+          // For real server connection, we need to get files from the current view
+          const fileItems = fileExplorer.querySelectorAll(".file-item");
+
+          fileItems.forEach((item) => {
+            const nameElement = item.querySelector(".file-name");
+            if (!nameElement || nameElement.textContent === "..") return; // Skip parent directory
+
+            const iconElement = item.querySelector(".file-icon");
+            const isFolder =
+              iconElement && iconElement.classList.contains("folder-icon");
+
+            currentFiles.push({
+              name: nameElement.textContent,
+              type: isFolder ? "folder" : "file",
+              path:
+                activePath === "/"
+                  ? `/${nameElement.textContent}`
+                  : `${activePath}/${nameElement.textContent}`,
+            });
+          });
+        }
+
+        // Update our knowledge of directories
+        const currentDirectories = currentFiles
+          .filter((file) => file.type === "folder")
+          .map((dir) => ({ name: dir.name, path: dir.path }));
+
+        allKnownDirectories.set(activePath, currentDirectories);
+
+        // Clear existing items except root
+        while (directoryTree.children.length > 1) {
+          directoryTree.removeChild(directoryTree.lastChild);
+        }
+
+        // Remove active class from all items
+        const items = directoryTree.querySelectorAll(".tree-item");
+        items.forEach((item) => item.classList.remove("active"));
+
+        // Add active class to root if current path is root
+        if (activePath === "/") {
+          directoryTree.querySelector(".tree-item").classList.add("active");
+        }
+
+        // Fix root directory click handler
+        const rootItem = directoryTree.querySelector(".tree-item");
+        rootItem.onclick = function () {
+          if (isConnected && statusText.textContent.includes("Demo")) {
+            loadDirectory("/");
+          } else {
+            navigateToDirectory("/");
+          }
+        };
+
+        // Add root level directories if we know them
+        if (allKnownDirectories.has("/")) {
+          const rootDirs = allKnownDirectories.get("/");
+          rootDirs.forEach((dir) => {
+            addDirectoryToTree(dir.name, dir.path, 1, dir.path === activePath);
+          });
+        }
+
+        // For non-root paths, show the path hierarchy with siblings
+        if (activePath !== "/") {
+          const pathParts = activePath.split("/").filter((p) => p);
+          let currentPath = "";
+
+          // For each level in the path, show siblings if known
+          for (let i = 0; i < pathParts.length; i++) {
+            const part = pathParts[i];
+            const parentPath =
+              i === 0 ? "/" : `/${pathParts.slice(0, i).join("/")}`;
+            currentPath = i === 0 ? `/${part}` : `${currentPath}/${part}`;
+
+            // If we know siblings at this level, show them
+            if (allKnownDirectories.has(parentPath)) {
+              const siblings = allKnownDirectories.get(parentPath);
+
+              // Add all siblings at this level
+              siblings.forEach((dir) => {
+                // Build the full path for this sibling
+                const siblingPath =
+                  parentPath === "/"
+                    ? `/${dir.name}`
+                    : `${parentPath}/${dir.name}`;
+
+                // Add to tree with the correct indentation level
+                addDirectoryToTree(
+                  dir.name,
+                  siblingPath,
+                  i + 1,
+                  siblingPath === currentPath
+                );
+              });
+            }
+
+            // If we know subdirectories of the current directory, show them too
+            if (
+              i === pathParts.length - 1 &&
+              allKnownDirectories.has(currentPath)
+            ) {
+              const subdirs = allKnownDirectories.get(currentPath);
+              subdirs.forEach((dir) => {
+                addDirectoryToTree(dir.name, dir.path, i + 2, false);
+              });
+            }
+          }
+        }
+
+        // Helper function to add a directory to the tree
+        function addDirectoryToTree(name, path, indentLevel, isActive) {
+          // Check if this directory is already in the tree
+          const existingItem = Array.from(directoryTree.children).find(
+            (item) => {
+              const nameSpan = item.querySelector("span");
+              const itemPath = item.getAttribute("data-path");
+              return (
+                nameSpan && nameSpan.textContent === name && itemPath === path
+              );
+            }
+          );
+
+          if (existingItem) {
+            // If it exists and should be active, make it active
+            if (isActive) {
+              existingItem.classList.add("active");
+            }
+            return;
+          }
+
+          const dirItem = document.createElement("li");
+          dirItem.className = `tree-item tree-folder${
+            isActive ? " active" : ""
+          }`;
+          dirItem.style.paddingLeft = `${indentLevel * 16}px`;
+          dirItem.setAttribute("data-path", path);
+
+          dirItem.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+        <path d="M20 5h-9.586L8.707 3.293A.997.997 0 0 0 8 3H4c-1.103 0-2 .897-2 2v14c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V7c0-1.103-.897-2-2-2z"/>
+      </svg>
+      <span>${name}</span>
+    `;
+
+          dirItem.addEventListener("click", () => {
+            if (isConnected && statusText.textContent.includes("Demo")) {
+              loadDirectory(path);
+            } else {
+              navigateToDirectory(path);
+            }
+          });
+
+          directoryTree.appendChild(dirItem);
+        }
+      }
+
+      // Open file
+      function openFile(file) {
+        currentFile = file;
+
+        // Set preview title
+        previewTitle.textContent = file.name;
+
+        // Hide run output
+        runOutput.classList.remove("active");
+
+        // Hide graph output and reset layout
+        const graphOutput = document.getElementById("graph-output");
+        graphOutput.classList.remove("active");
+        graphOutput.innerHTML = "";
+
+        // Reset execution container to single column
+        const executionContainer = document.querySelector(
+          ".execution-container"
+        );
+        if (executionContainer) {
+          executionContainer.classList.remove("has-graphs");
+        }
+
+        // Show file preview
+        filePreview.classList.add("active");
+
+        // Handle different file types
+        if (file.type === "image") {
+          // Hide code editor and markdown preview
+          codeEditor.style.display = "none";
+          if (document.getElementById("markdown-preview")) {
+            document.getElementById("markdown-preview").style.display = "none";
+          }
+          imagePreview.style.display = "block";
+
+          if (file.blob) {
+            // Create object URL from blob
+            imagePreview.src = URL.createObjectURL(file.blob);
+          } else {
+            imagePreview.src = "/api/placeholder/800/600";
+          }
+
+          saveBtn.style.display = "none";
+          runBtn.style.display = "none";
+        } else if (file.type === "markdown") {
+          // Setup for markdown files with side-by-side preview
+          imagePreview.style.display = "none";
+          codeEditor.style.display = "block";
+          codeEditor.value = file.content || "";
+
+          // Make sure the editor container doesn't have the split view class yet
+          document
+            .querySelector(".preview-editor")
+            .classList.remove("split-view");
+
+          // Create or show markdown preview pane
+          let markdownPreview = document.getElementById("markdown-preview");
+          if (!markdownPreview) {
+            markdownPreview = document.createElement("div");
+            markdownPreview.id = "markdown-preview";
+            markdownPreview.className = "markdown-preview";
+            document
+              .querySelector(".preview-editor")
+              .appendChild(markdownPreview);
+          }
+
+          // First show the markdown preview
+          markdownPreview.style.display = "block";
+
+          // Then add the split view class to adjust layout
+          document.querySelector(".preview-editor").classList.add("split-view");
+
+          // Render markdown content
+          markdownPreview.innerHTML = renderMarkdown(file.content || "");
+
+          // Setup live updating of markdown preview
+          codeEditor.addEventListener("input", function () {
+            markdownPreview.innerHTML = renderMarkdown(codeEditor.value);
+          });
+
+          saveBtn.style.display = "inline-block";
+          runBtn.style.display = "none";
+        } else {
+          // For all other text/code files
+          imagePreview.style.display = "none";
+          codeEditor.style.display = "block";
+          codeEditor.value = file.content || "";
+
+          // Hide markdown preview if it exists
+          const markdownPreview = document.getElementById("markdown-preview");
+          if (markdownPreview) {
+            markdownPreview.style.display = "none";
+            document
+              .querySelector(".preview-editor")
+              .classList.remove("split-view");
+          }
+
+          // Apply syntax highlighting based on file type
+          if (window.hljs) {
+            let language = "plaintext";
+            if (file.type === "python") language = "python";
+            else if (file.type === "javascript") language = "javascript";
+            else if (file.type === "cpp") language = "cpp";
+
+            // Create a pre and code element for highlighting
+            const pre = document.createElement("pre");
+            const code = document.createElement("code");
+            code.className = `language-${language}`;
+            code.textContent = file.content || "";
+            pre.appendChild(code);
+
+            // Highlight the code
+            window.hljs.highlightElement(code);
+
+            // Create a style element for the code editor
+            const styleEl = document.createElement("style");
+            styleEl.textContent = `
+        .code-editor {
+          font-family: 'Consolas', 'Courier New', monospace;
+          font-size: 14px;
+          line-height: 1.5;
+          padding: 10px;
+          color: ${window.getComputedStyle(code).color};
+          background-color: ${window.getComputedStyle(code).backgroundColor};
+        }
+      `;
+
+            // Remove any previous style
+            const oldStyle = document.getElementById("editor-style");
+            if (oldStyle) {
+              oldStyle.remove();
+            }
+
+            // Add the new style
+            styleEl.id = "editor-style";
+            document.head.appendChild(styleEl);
+          }
+
+          saveBtn.style.display = "inline-block";
+
+          // Show run button for supported file types
+          if (["python", "javascript", "cpp"].includes(file.type)) {
+            runBtn.style.display = "inline-block";
+          } else {
+            runBtn.style.display = "none";
+          }
+        }
+      }
+
+      // Initialize Pyodide
+      let pyodide;
+      let pyodideReady = false;
+      let pyodideLoading = false;
+
+      // Replace the existing preparePyodide function with this one:
+      async function preparePyodide() {
+        if (pyodideReady) return pyodide;
+        if (pyodideLoading) {
+          // Wait for loading to complete
+          return new Promise((resolve) => {
+            const checkInterval = setInterval(() => {
+              if (pyodideReady) {
+                clearInterval(checkInterval);
+                resolve(pyodide);
+              }
+            }, 100);
+          });
+        }
+
+        pyodideLoading = true;
+        console.log("Loading Python environment in background...");
+
+        try {
+          // Load Pyodide with stdout/stderr redirected to console
+          pyodide = await loadPyodide({
+            indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/",
+            stdout: (text) => console.log(text),
+            stderr: (text) => console.error(text),
+          });
+
+          // Load packages
+          console.log("Loading scientific packages in background...");
+          await pyodide.loadPackagesFromImports(
+            "import numpy, pandas, matplotlib"
+          );
+
+          pyodideReady = true;
+          console.log("Python environment loaded successfully in background!");
+          return pyodide;
+        } catch (error) {
+          console.error("Pyodide background loading error:", error);
+          pyodideLoading = false;
+          throw error;
+        }
+      }
+
+      const styleElement = document.createElement("style");
+      styleElement.textContent = `
+                    .run-output {
+                      white-space: pre-wrap;
+                      font-family: "Consolas", "Courier New", monospace;
+                      line-height: 1.5;
+                    }`;
+      document.head.appendChild(styleElement);
+
+      // Run Python file
+      runBtn.addEventListener("click", async () => {
+        if (!currentFile) return;
+
+        // Get file extension
+        const fileExt = currentFile.name.split(".").pop().toLowerCase();
+
+        // Clear previous outputs
+        runOutput.innerHTML = ""; // Use innerHTML instead of textContent
+        runOutput.classList.add("active");
+
+        // Hide graph output initially
+        const graphOutput = document.getElementById("graph-output");
+        graphOutput.classList.remove("active");
+        graphOutput.innerHTML = "";
+
+        // Reset execution container to single column
+        const executionContainer = document.querySelector(
+          ".execution-container"
+        );
+        executionContainer.classList.remove("has-graphs");
+
+        try {
+          const code = codeEditor.value;
+
+          // Handle different languages
+          if (fileExt === "py") {
+            // Python execution code
+            if (!pyodideReady) {
+              runOutput.innerHTML +=
+                "Initializing Python environment (this may take a moment)...\n";
+
+              try {
+                // Load Pyodide with output directed to the runOutput
+                pyodide = await loadPyodide({
+                  indexURL: "https://cdn.jsdelivr.net/pyodide/v0.23.4/full/",
+                  stdout: (text) => {
+                    console.log(text);
+                  },
+                  stderr: (text) => {
+                    console.error(text);
+                  },
+                });
+
+                // Load packages silently
+                await pyodide.loadPackagesFromImports(
+                  "import numpy, pandas, matplotlib"
+                );
+
+                pyodideReady = true;
+                runOutput.innerHTML += "Python environment ready.\n\n";
+              } catch (error) {
+                runOutput.innerHTML += `Error loading Python: ${error.message}\n`;
+                throw error;
+              }
+            }
+
+            // Custom output handling for Python
+            const pythonOutput = [];
+
+            // For each execution, reset the stdout/stderr handlers with proper newline handling
+            pyodide.setStdout({
+              batched: (text) => {
+                pythonOutput.push(text);
+                console.log(text);
+              },
+            });
+
+            pyodide.setStderr({
+              batched: (text) => {
+                pythonOutput.push(`Error: ${text}`);
+                console.error(text);
+              },
+            });
+
+            // Setup for matplotlib and input handling
+            await pyodide.runPythonAsync(`
+                              import matplotlib
+                              matplotlib.use('agg')
+                              import base64
+                              import sys
+                              from js import document, window
+
+                              # Setup input functionality
+                              import builtins
+                              original_input = builtins.input
+
+                              def input_with_js(prompt=''):
+                                  # Use JavaScript's prompt for input
+                                  from js import window
+                                  return window.prompt(prompt)
+
+                              builtins.input = input_with_js
+
+                              # Function to convert matplotlib figure to base64 image
+                              def fig_to_base64(fig):
+                                  from io import BytesIO
+                                  buf = BytesIO()
+                                  fig.savefig(buf, format='png', dpi=100)
+                                  buf.seek(0)
+                                  img_data = base64.b64encode(buf.read()).decode('utf-8')
+                                  return img_data
+                          `);
+
+            // Execute the Python code
+            await pyodide.runPythonAsync(code);
+
+            // Display all collected output, ensuring newlines are preserved
+            if (pythonOutput.length > 0) {
+              // Safely encode output to preserve newlines when displayed in HTML
+              const safeOutput = pythonOutput
+                .join("\n")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+
+              runOutput.innerHTML += safeOutput;
+            }
+
+            // Show any matplotlib figures
+            const hasGraphs = await pyodide.runPythonAsync(`
+                              # Display all figures if any were created
+                              import matplotlib.pyplot as plt
+                              has_figures = len(plt.get_fignums()) > 0
+
+                              if has_figures:
+                                  from js import document
+                                  graphOutput = document.getElementById("graph-output")
+
+                                  # Clear previous content
+                                  graphOutput.innerHTML = ""
+
+                                  for i in plt.get_fignums():
+                                      # Get the figure
+                                      fig = plt.figure(i)
+
+                                      # Convert figure to base64 image
+                                      img_data = fig_to_base64(fig)
+
+                                      # Create an img element and append to output div
+                                      img = document.createElement("img")
+                                      img.src = f"data:image/png;base64,{img_data}"
+                                      img.className = "matplotlib-figure"
+                                      graphOutput.appendChild(img)
+
+                                  # Close all figures to prevent them from being shown again in future runs
+                                  plt.close('all')
+
+                              has_figures
+                          `);
+
+            // Show graph output and adjust layout only if there are graphs
+            if (hasGraphs) {
+              graphOutput.classList.add("active");
+              executionContainer.classList.add("has-graphs");
+            }
+          } else if (fileExt === "js") {
+            // Execute JavaScript code using a secure iframe sandbox
+            runOutput.innerHTML +=
+              "Executing JavaScript code in a secure sandbox...\n\n";
+
+            try {
+              // Create a hidden iframe for sandbox execution
+              const sandboxId = "js-sandbox-" + Date.now();
+              const iframe = document.createElement("iframe");
+              iframe.id = sandboxId;
+              iframe.style.display = "none";
+              document.body.appendChild(iframe);
+
+              // Set up message listener to receive results
+              window.addEventListener("message", function handler(event) {
+                // Only process messages from our sandbox
+                if (event.source !== iframe.contentWindow) return;
+
+                if (event.data.type === "console") {
+                  // Handle console output
+                  const { method, args } = event.data;
+                  const output = args
+                    .map((arg) =>
+                      typeof arg === "object"
+                        ? JSON.stringify(arg, null, 2)
+                        : String(arg)
+                    )
+                    .join(" ");
+
+                  runOutput.innerHTML += method + ": " + output + "\n";
+                } else if (event.data.type === "error") {
+                  // Handle errors
+                  runOutput.innerHTML += "\nError: " + event.data.error + "\n";
+                } else if (event.data.type === "done") {
+                  // Execution complete
+                  runOutput.innerHTML += "\nJavaScript execution completed.";
+                  window.removeEventListener("message", handler);
+                  document.body.removeChild(iframe);
+                }
+              });
+
+              // Create sandbox content with the user's code
+              const sandboxContent = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                      <script>
+                        // Override console methods
+                        const originalConsole = console;
+                        console = {
+                          log: function(...args) {
+                            originalConsole.log(...args);
+                            window.parent.postMessage({type: 'console', method: 'log', args}, '*');
+                          },
+                          error: function(...args) {
+                            originalConsole.error(...args);
+                            window.parent.postMessage({type: 'console', method: 'error', args}, '*');
+                          },
+                          warn: function(...args) {
+                            originalConsole.warn(...args);
+                            window.parent.postMessage({type: 'console', method: 'warn', args}, '*');
+                          }
+                        };
+
+                        // Execute the code
+                        try {
+                          ${code}
+                          window.parent.postMessage({type: 'done'}, '*');
+                        } catch (e) {
+                          window.parent.postMessage({type: 'error', error: e.message}, '*');
+                          window.parent.postMessage({type: 'done'}, '*');
+                        }
+                      <\/script>
+                    </head>
+                    <body></body>
+                    </html>
+                  `;
+
+              // Write content to the iframe
+              iframe.contentWindow.document.open();
+              iframe.contentWindow.document.write(sandboxContent);
+              iframe.contentWindow.document.close();
+            } catch (jsError) {
+              runOutput.innerHTML +=
+                "\nJavaScript Error: " + jsError.message + "\n";
+              console.error("JavaScript execution error:", jsError);
+            }
+          } else if (fileExt === "c" || fileExt === "cpp") {
+            const isC = fileExt === "c";
+            const language = isC ? "C" : "C++";
+
+            // Clear previous output
+            runOutput.innerHTML = `Running ${language} code using interpreter...\n\n`;
+
+            try {
+              runOutput.innerHTML +=
+                "Note: Using JSCPP interpreter - limited feature support for educational purposes only.\n";
+              runOutput.innerHTML +=
+                "Not all C/C++ features or standard libraries are supported.\n\n";
+
+              // Execute the code using the JSCPP interpreter
+              const result = await CppRunner.execute(code, isC);
+
+              if (result.success) {
+                // Show the successful output
+                if (result.output) {
+                  runOutput.innerHTML += `Program output:\n${result.output}\n\n`;
+                } else {
+                  runOutput.innerHTML += "Program executed with no output.\n\n";
+                }
+                runOutput.innerHTML += `Program completed with exit code: ${result.exitCode}\n`;
+              } else {
+                // Show compilation/execution errors
+                runOutput.innerHTML += `Execution failed with errors:\n`;
+                if (result.errors) {
+                  // Highlight errors in red
+                  runOutput.innerHTML += `<span style="color: #ff5555;">${result.errors}</span>\n\n`;
+                } else {
+                  runOutput.innerHTML += `<span style="color: #ff5555;">Unknown error occurred</span>\n\n`;
+                }
+
+                // Still show any partial output that was produced
+                if (result.output) {
+                  runOutput.innerHTML += `Partial output before error:\n${result.output}\n\n`;
+                }
+                runOutput.innerHTML += `Program terminated with exit code: ${result.exitCode}\n`;
+              }
+            } catch (error) {
+              // This catch block handles errors in our wrapper code, not in the C++ execution
+              console.error(`${language} execution error:`, error);
+              runOutput.innerHTML += `\n${language} execution environment error: ${
+                error.message || "Unknown error"
+              }\n`;
+              runOutput.innerHTML +=
+                "This is likely an issue with the interpreter, not your code.\n";
+            }
+          }
+        } catch (error) {
+          runOutput.innerHTML += `\nError: ${error.message}\n`;
+          console.error("Code execution error:", error);
+        }
+      });
+
+      // Get file icon based on type
+      function getFileIcon(type) {
+        if (type === "folder") {
+          return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 5h-9.586L8.707 3.293A.997.997 0 0 0 8 3H4c-1.103 0-2 .897-2 2v14c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V7c0-1.103-.897-2-2-2z"/></svg>`;
+        } else if (type === "python") {
+          return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 3H4c-1.103 0-2 .897-2 2v14c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V5c0-1.103-.897-2-2-2zM4 19V5h16l.002 14H4z"/><path d="M9.293 6.707L12.293 9.707 9.293 12.707 10.707 14.121 14.121 10.707 10.707 7.293z"/></svg>`;
+        } else if (type === "javascript") {
+          return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 3h18v18H3V3m4.73 15.04c.4.85 1.19 1.55 2.54 1.55 1.5 0 2.53-.8 2.53-2.55v-5.78h-1.7V17c0 .86-.35 1.08-.9 1.08-.58 0-.82-.4-1.09-.87l-1.38.83m5.98-.18c.5.98 1.51 1.73 3.09 1.73 1.6 0 2.8-.83 2.8-2.36 0-1.41-.81-2.04-2.25-2.66l-.42-.18c-.73-.31-1.04-.52-1.04-1.02 0-.41.31-.73.81-.73.48 0 .8.21 1.09.73l1.31-.87c-.55-.96-1.33-1.33-2.4-1.33-1.51 0-2.48.96-2.48 2.23 0 1.38.81 2.03 2.03 2.55l.42.18c.78.34 1.24.55 1.24 1.13 0 .48-.45.83-1.15.83-.83 0-1.31-.43-1.67-1.03l-1.38.8z"/></svg>`;
+        } else if (type === "cpp") {
+          return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10.5 15.97l.41 2.44c-.52.24-1.11.41-1.75.41-2.44 0-3.18-1.79-3.18-4.42 0-2.7.85-4.59 3.27-4.59.96 0 1.96.41 2.25 1.22l-1.23.85c-.22-.44-.53-.64-1.01-.64-.68 0-1.35.71-1.35 3.15 0 2.36.63 3.12 1.33 3.12.39 0 .65-.16.92-.36M11.5 13h1.67v-3.25h2.83V13h1.5v1.5h-1.5v3.75h-2.83V14.5H11.5v-1.5m6.67 0h1.67v-3.25h2.83V13h1.5v1.5h-1.5v3.75h-2.83V14.5h-1.67v-1.5"/></svg>`;
+        } else if (type === "markdown") {
+          return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20.56 18H3.44C2.65 18 2 17.37 2 16.59V7.41C2 6.63 2.65 6 3.44 6h17.12c.79 0 1.44.63 1.44 1.41v9.18c0 .78-.65 1.41-1.44 1.41M3.44 6.94c-.26 0-.48.21-.48.47v9.18c0 .26.22.47.48.47h17.12c.26 0 .48-.21.48-.47V7.41c0-.26-.22-.47-.48-.47H3.44m1.45 8.25V8.81h1.92l1.92 2.35 1.92-2.35h1.93v6.38h-1.93v-2.88L9.73 13l-1.92-1.69v3.88H4.89m10.27 0V8.81h3.83v1.09h-2.39v1.09h2.39v1.09h-2.39v1.92h2.39v1.09h-3.83"/></svg>`;
+        } else if (type === "image") {
+          return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 3H4c-1.103 0-2 .897-2 2v14c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V5c0-1.103-.897-2-2-2zM4 19V5h16l.002 14H4z"/><path d="M7.5 17a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/><path d="M19 12l-3-3-4 5-2-2-4 5h13z"/></svg>`;
+        } else {
+          return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 3H4c-1.103 0-2 .897-2 2v14c0 1.103.897 2 2 2h16c1.103 0 2-.897 2-2V5c0-1.103-.897-2-2-2zm-1 16H5c-.551 0-1-.449-1-1V6c0-.551.449-1 1-1h14c.551 0 1 .449 1 1v12c0 .551-.449 1-1 1z"/><path d="M7 13h10v2H7z"/><path d="M7 9h10v2H7z"/></svg>`;
+        }
+      }
+
+      // Function to refresh the syntax highlighting
+      function refreshHighlighting(editor) {
+        // Get the current content and language
+        const content = editor.value;
+        const language = editor.dataset.language || "plaintext";
+
+        // Only proceed if highlight.js is available
+        if (window.hljs) {
+          try {
+            // Create a highlighted HTML version
+            const highlighted = window.hljs.highlight(content, {
+              language: language,
+            }).value;
+
+            // If we're in a modal viewing context, we could show the highlighted version
+            // but for direct editing, we'll just rely on the editor's built-in styling
+
+            // Apply some basic syntax coloring to the editor itself
+            // This is just a fallback method and won't be as good as a proper editor
+            const styleColors = {
+              python: {
+                keywords: "#0000ff",
+                strings: "#008000",
+                comments: "#808080",
+              },
+              javascript: {
+                keywords: "#0000ff",
+                strings: "#008000",
+                comments: "#808080",
+              },
+              cpp: {
+                keywords: "#0000ff",
+                strings: "#008000",
+                comments: "#808080",
+              },
+              plaintext: {
+                keywords: "#000000",
+                strings: "#000000",
+                comments: "#000000",
+              },
+            };
+
+            // Apply basic colors to the editor
+            const colors = styleColors[language] || styleColors.plaintext;
+            editor.style.color = "#333"; // Default text color
+          } catch (e) {
+            console.error("Error applying syntax highlighting:", e);
+          }
+        }
+      }
+
+      // Function to apply syntax highlighting
+      function applyCodeSyntaxHighlighting(editor, language) {
+        // Set the data-language attribute for later reference
+        editor.dataset.language = language;
+
+        // Apply styling based on language
+        const editorStyle = document.createElement("style");
+        editorStyle.textContent = `
+    .code-editor {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      padding: 10px;
+      tab-size: 4;
+    }
+    
+    /* Markdown preview styles */
+    .markdown-preview {
+      padding: 15px;
+      border-radius: var(--border-radius);
+      background-color: white;
+      border: 1px solid #e9ecef;
+      height: 100%;
+      overflow: auto;
+    }
+    
+    .preview-editor.split-view {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    
+    .markdown-preview h1, .markdown-preview h2, .markdown-preview h3,
+    .markdown-preview h4, .markdown-preview h5, .markdown-preview h6 {
+      margin-top: 0.5em;
+      margin-bottom: 0.5em;
+    }
+    
+    .markdown-preview code {
+      background-color: #f5f5f5;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-family: monospace;
+    }
+    
+    .markdown-preview pre code {
+      display: block;
+      padding: 10px;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+  `;
+        document.head.appendChild(editorStyle);
+      }
+
+      // Create a function to show code with syntax highlighting in a preview pane
+      function createCodePreview(code, language) {
+        // Create a container
+        const previewContainer = document.createElement("div");
+        previewContainer.className = "code-preview";
+
+        // Create pre and code elements
+        const pre = document.createElement("pre");
+        const codeElement = document.createElement("code");
+        codeElement.className = `language-${language}`;
+        codeElement.textContent = code;
+
+        // Assemble the elements
+        pre.appendChild(codeElement);
+        previewContainer.appendChild(pre);
+
+        // Highlight the code if highlight.js is available
+        if (window.hljs) {
+          window.hljs.highlightElement(codeElement);
+        }
+
+        return previewContainer;
+      }
+
+      // Simple markdown renderer function
+      function renderMarkdown(markdown) {
+        if (!markdown) return "";
+
+        // Convert headings
+        let html = markdown
+          .replace(/^# (.*$)/gm, "<h1>$1</h1>")
+          .replace(/^## (.*$)/gm, "<h2>$1</h2>")
+          .replace(/^### (.*$)/gm, "<h3>$1</h3>")
+          .replace(/^#### (.*$)/gm, "<h4>$1</h4>");
+
+        // Convert bold
+        html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+
+        // Convert italic
+        html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
+
+        // Convert links
+        html = html.replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2">$1</a>');
+
+        // Convert code blocks with syntax highlighting
+        html = html.replace(
+          /```(\w+)?\n([\s\S]*?)```/g,
+          function (match, language, code) {
+            const lang = language || "plaintext";
+            return `<pre><code class="language-${lang}">${code}</code></pre>`;
+          }
+        );
+
+        // Convert inline code
+        html = html.replace(/`(.*?)`/g, "<code>$1</code>");
+
+        // Convert lists
+        html = html.replace(/^\* (.*$)/gm, "<li>$1</li>");
+        html = html.replace(/<li>(.*)<\/li>/g, "<ul><li>$1</li></ul>");
+
+        // Convert paragraphs
+        html = html.replace(
+          /(?:^|\n)(?!<[uo]l>|<li>|<h[1-6]>|<pre>)(.*?)(?:\n|$)/g,
+          function (match) {
+            return match.trim() ? "<p>" + match.trim() + "</p>\n" : "\n";
+          }
+        );
+
+        return html;
+      }
+
+      // Add highlight.js for syntax highlighting
+      function loadHighlightJS() {
+        if (!window.hljs) {
+          // Load the main highlight.js script
+          const script = document.createElement("script");
+          script.src =
+            "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js";
+
+          // Load highlight.js CSS with a good theme for visibility
+          const styleSheet = document.createElement("link");
+          styleSheet.rel = "stylesheet";
+          styleSheet.href =
+            "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/vs.min.css";
+          document.head.appendChild(styleSheet);
+
+          // Initialize when loaded
+          script.onload = function () {
+            // After the main script is loaded, apply highlighting to any existing code
+            if (window.hljs) {
+              console.log("Highlight.js loaded successfully");
+
+              // Try to highlight any existing code elements
+              document.querySelectorAll("pre code").forEach((el) => {
+                window.hljs.highlightElement(el);
+              });
+            }
+          };
+
+          document.head.appendChild(script);
+        }
+      }
+
+      // About modal
+      aboutLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        aboutModal.classList.add("active");
+      });
+
+      modalClose.addEventListener("click", () => {
+        aboutModal.classList.remove("active");
+      });
+
+      modalOk.addEventListener("click", () => {
+        aboutModal.classList.remove("active");
+      });
+
+      // Toast notifications
+      function showToast(title, message, type = "info") {
+        const toast = document.createElement("div");
+        toast.className = `toast ${type}`;
+        toast.innerHTML = `
+                                        <div class="toast-icon">
+                                            ${getToastIcon(type)}
+                                        </div>
+                                        <div class="toast-content">
+                                            <div class="toast-title">${title}</div>
+                                            <div class="toast-message">${message}</div>
+                                        </div>
+                                    `;
+
+        toastContainer.appendChild(toast);
+
+        // Remove toast after 4 seconds
+        setTimeout(() => {
+          toast.style.opacity = "0";
+          toast.style.transform = "translateY(20px)";
+          setTimeout(() => {
+            toastContainer.removeChild(toast);
+          }, 300);
+        }, 4000);
+      }
+
+      // Get toast icon based on type
+      function getToastIcon(type) {
+        if (type === "success") {
+          return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#28a745"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>`;
+        } else if (type === "error") {
+          return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#dc3545"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>`;
+        } else {
+          return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#4361ee"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>`;
+        }
+      }
+
+      // Initialize app
+      document.addEventListener("DOMContentLoaded", function () {
+        // Add syntax highlighting stylesheet
+        const styleSheet = document.createElement("link");
+        styleSheet.rel = "stylesheet";
+        styleSheet.href =
+          "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css";
+        document.head.appendChild(styleSheet);
+
+        // Load the highlight.js script
+        loadHighlightJS();
+
+        // Get the last directory
+        const lastDirectory = localStorage.getItem("lastDirectory");
+
+        // Connect to server first
+        connectBtn.addEventListener("click", function originalConnectHandler() {
+          // Remove this listener to prevent double execution
+          connectBtn.removeEventListener("click", originalConnectHandler);
+
+          // Add a modified handler that will navigate after connection
+          if (lastDirectory) {
+            // Listen for connection success
+            const connectionCheckInterval = setInterval(() => {
+              if (isConnected) {
+                clearInterval(connectionCheckInterval);
+
+                console.log("Navigating to saved directory:", lastDirectory);
+
+                if (statusText.textContent.includes("Demo")) {
+                  loadDirectory(lastDirectory);
+                } else {
+                  navigateToDirectory(lastDirectory);
+                }
+              }
+            }, 300);
+
+            // Set a timeout to clear the interval if connection takes too long
+            setTimeout(() => clearInterval(connectionCheckInterval), 10000);
+          }
+        });
+
+        // Simulate automatic connection for demo purposes
+        setTimeout(() => {
+          connectBtn.click();
+        }, 1000);
+
+        // Preload Pyodide in the background
+        setTimeout(() => {
+          preparePyodide().catch((err) => {
+            console.warn("Background Pyodide loading failed:", err);
+          });
+        }, 3000);
+      });
+
+      // Update the new file modal to support more file types
+      function updateNewFileModal() {
+        const fileTypeSelect = document.getElementById("new-file-type");
+
+        // Clear existing options
+        fileTypeSelect.innerHTML = "";
+
+        // Add options for different file types
+        const fileTypes = [
+          { value: "text", label: "Text File (.txt)" },
+          { value: "python", label: "Python Script (.py)" },
+          { value: "javascript", label: "JavaScript (.js)" },
+          { value: "cpp", label: "C/C++ (.cpp)" },
+          { value: "markdown", label: "Markdown (.md)" },
+        ];
+
+        fileTypes.forEach((type) => {
+          const option = document.createElement("option");
+          option.value = type.value;
+          option.textContent = type.label;
+          fileTypeSelect.appendChild(option);
+        });
+      }
+
+      // Open new file modal
+      newFileBtn.addEventListener("click", () => {
+        newFileName.value = "";
+        newFileType.value = "text";
+        newFileModal.classList.add("active");
+        newFileName.focus();
+      });
+
+      // Close new file modal
+      newFileModalClose.addEventListener("click", () => {
+        newFileModal.classList.remove("active");
+      });
+
+      newFileCancel.addEventListener("click", () => {
+        newFileModal.classList.remove("active");
+      });
+
+      // Call this function when the page loads
+      document.addEventListener("DOMContentLoaded", updateNewFileModal);
+
+      // Create new file
+      newFileCreate.addEventListener("click", () => {
+        const fileName = newFileName.value.trim();
+        const fileType = newFileType.value;
+
+        if (!fileName) {
+          showToast("Error", "Please enter a file name", "error");
+          return;
+        }
+
+        // Add file extension if not present
+        let fullFileName = fileName;
+        if (fileType === "text" && !fileName.endsWith(".txt")) {
+          fullFileName += ".txt";
+        } else if (fileType === "python" && !fileName.endsWith(".py")) {
+          fullFileName += ".py";
+        } else if (fileType === "javascript" && !fileName.endsWith(".js")) {
+          fullFileName += ".js";
+        } else if (
+          fileType === "cpp" &&
+          !fileName.endsWith(".cpp") &&
+          !fileName.endsWith(".c")
+        ) {
+          fullFileName += ".cpp";
+        } else if (fileType === "markdown" && !fileName.endsWith(".md")) {
+          fullFileName += ".md";
+        }
+
+        // Default content based on file type
+        let defaultContent = "";
+        if (fileType === "python") {
+          defaultContent = '# New Python Script\n\nprint("Hello, World!")';
+        } else if (fileType === "javascript") {
+          defaultContent =
+            '// New JavaScript File\n\nconsole.log("Hello, World!");';
+        } else if (fileType === "cpp") {
+          defaultContent =
+            '#include <iostream>\n\nint main() {\n    cout << "Hello, World!" << endl;\n    return 0;\n}';
+        } else if (fileType === "markdown") {
+          defaultContent =
+            "# New Markdown Document\n\nThis is a **Markdown** document. You can add:\n\n- Lists\n- *Formatted* text\n- [Links](https://example.com)\n\n```\nCode blocks\n```";
+        }
+
+        // Create the file
+        const filePath =
+          currentPath === "/"
+            ? `/${fullFileName}`
+            : `${currentPath}/${fullFileName}`;
+
+        // Check if we're in demo mode
+        if (isConnected && statusText.textContent.includes("Demo")) {
+          // For demo mode, just add to the demo files
+          const newFile = {
+            name: fullFileName,
+            type: fileType,
+            path: filePath,
+            content: defaultContent,
+          };
+
+          if (currentPath === "/") {
+            demoFiles.push(newFile);
+          } else {
+            if (!demoSubDirs[currentPath]) {
+              demoSubDirs[currentPath] = [];
+            }
+            demoSubDirs[currentPath].push(newFile);
+          }
+
+          // Refresh the current directory view
+          loadDirectory(currentPath);
+          showToast(
+            "Success",
+            `File "${fullFileName}" created successfully`,
+            "success"
+          );
+        } else {
+          // For real server connections
+          const formData = new FormData();
+          const blob = new Blob([defaultContent], { type: "text/plain" });
+          formData.append("file", blob, fullFileName);
+
+          fetch(`${SERVER_URL}/files${filePath}`, {
+            method: "POST",
+            body: formData,
+          })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+              }
+              return response.json();
+            })
+            .then((data) => {
+              // Refresh the directory
+              navigateToDirectory(currentPath);
+              showToast(
+                "Success",
+                `File "${fullFileName}" created successfully`,
+                "success"
+              );
+            })
+            .catch((error) => {
+              showToast(
+                "Error",
+                `Failed to create file: ${error.message}`,
+                "error"
+              );
+            });
+        }
+
+        // Close the modal
+        newFileModal.classList.remove("active");
+      });
+
+      // Open delete file modal
+      deleteBtn.addEventListener("click", () => {
+        if (!currentFile) return;
+
+        deleteFileName.textContent = currentFile.name;
+        deleteFileModal.classList.add("active");
+      });
+
+      // Close delete file modal
+      deleteFileModalClose.addEventListener("click", () => {
+        deleteFileModal.classList.remove("active");
+      });
+
+      deleteFileCancel.addEventListener("click", () => {
+        deleteFileModal.classList.remove("active");
+      });
+
+      // Delete file
+      deleteFileConfirm.addEventListener("click", () => {
+        if (!currentFile) return;
+
+        const filePath = currentFile.path;
+
+        // Check if we're in demo mode
+        if (isConnected && statusText.textContent.includes("Demo")) {
+          // For demo mode, remove from the demo files
+          if (currentPath === "/") {
+            const index = demoFiles.findIndex((file) => file.path === filePath);
+            if (index !== -1) {
+              demoFiles.splice(index, 1);
+            }
+          } else {
+            if (demoSubDirs[currentPath]) {
+              const index = demoSubDirs[currentPath].findIndex(
+                (file) => file.path === filePath
+              );
+              if (index !== -1) {
+                demoSubDirs[currentPath].splice(index, 1);
+              }
+            }
+          }
+
+          // Refresh the current directory view
+          loadDirectory(currentPath);
+
+          // Hide file preview
+          filePreview.classList.remove("active");
+          currentFile = null;
+
+          showToast(
+            "Success",
+            `File "${deleteFileName.textContent}" deleted successfully`,
+            "success"
+          );
+        } else {
+          // For real server connections
+          fetch(`${SERVER_URL}/files${filePath}`, {
+            method: "DELETE",
+          })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+              }
+              return response.json();
+            })
+            .then((data) => {
+              // Refresh the directory
+              navigateToDirectory(currentPath);
+
+              // Hide file preview
+              filePreview.classList.remove("active");
+              currentFile = null;
+
+              showToast(
+                "Success",
+                `File "${deleteFileName.textContent}" deleted successfully`,
+                "success"
+              );
+            })
+            .catch((error) => {
+              showToast(
+                "Error",
+                `Failed to delete file: ${error.message}`,
+                "error"
+              );
+            });
+        }
+
+        // Close the modal
+        deleteFileModal.classList.remove("active");
+      });
+
+      // Fix for duplicate save message
+      // Replace the existing save button event listener with this one
+      saveBtn.addEventListener("click", () => {
+        if (!currentFile) return;
+
+        // Disable the save button to prevent multiple clicks
+        saveBtn.disabled = true;
+
+        const content = codeEditor.value;
+        const filepath = currentFile.path;
+
+        // Update the current file's content
+        currentFile.content = content;
+
+        // Check if we're in demo mode
+        if (isConnected && statusText.textContent.includes("Demo")) {
+          // For demo mode, just update the file content
+          setTimeout(() => {
+            showToast("Success", "File saved successfully", "success");
+            saveBtn.disabled = false;
+          }, 300);
+        } else {
+          // Create a FormData object
+          const formData = new FormData();
+          const blob = new Blob([content], { type: "text/plain" });
+          formData.append("file", blob, filepath);
+
+          // Send the file to the server
+          fetch(`${SERVER_URL}/files${filepath}`, {
+            method: "PUT",
+            body: formData,
+          })
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(`HTTP error ${response.status}`);
+              }
+              return response.json();
+            })
+            .then((data) => {
+              showToast("Success", "File saved successfully", "success");
+              saveBtn.disabled = false;
+            })
+            .catch((error) => {
+              showToast(
+                "Error",
+                `Failed to save file: ${error.message}`,
+                "error"
+              );
+              saveBtn.disabled = false;
+            });
+        }
+      });
+
+      const folderDeleteStyle = document.createElement("style");
+      folderDeleteStyle.textContent = `
+  .file-item.folder-item {
+    position: relative;
+  }
+  
+  .file-item.folder-item:hover .dir-delete-btn {
+    display: block !important;
+  }
+  
+  .dir-delete-btn {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    z-index: 9999;
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+    display: none;
+    font-weight: bold;
+  }
+`;
+      document.head.appendChild(folderDeleteStyle);
+
+      // 2. Define a mutation observer to watch for new directories being added
+      const folderObserver = new MutationObserver(function (mutations) {
+        mutations.forEach(function (mutation) {
+          if (mutation.type === "childList" && mutation.addedNodes.length > 0) {
+            attachDeleteButtonsToFolders();
+          }
+        });
+      });
+
+      // 3. Create a function to attach delete buttons to all folder items
+      function attachDeleteButtonsToFolders() {
+        // Find all folder items
+        const folderItems = document.querySelectorAll(".file-item");
+
+        folderItems.forEach((item) => {
+          const iconElement = item.querySelector(".file-icon");
+          const nameElement = item.querySelector(".file-name");
+
+          // Check if this is a folder (not parent directory)
+          if (
+            iconElement &&
+            iconElement.classList.contains("folder-icon") &&
+            nameElement &&
+            nameElement.textContent !== ".."
+          ) {
+            // Add a class to identify folder items for CSS
+            item.classList.add("folder-item");
+
+            // Only add delete button if it doesn't already exist
+            if (!item.querySelector(".dir-delete-btn")) {
+              // Create a delete button
+              const deleteBtn = document.createElement("button");
+              deleteBtn.className = "dir-delete-btn";
+              deleteBtn.innerHTML = "×";
+              deleteBtn.title = "Delete Directory";
+
+              // Store the directory info on the button
+              const dirName = nameElement.textContent;
+              const dirPath =
+                currentPath === "/"
+                  ? `/${dirName}`
+                  : `${currentPath}/${dirName}`;
+              deleteBtn.dataset.dirName = dirName;
+              deleteBtn.dataset.dirPath = dirPath;
+
+              // Handle delete click
+              deleteBtn.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                // Set currentDirectory using the data stored on the button
+                currentDirectory = {
+                  name: deleteBtn.dataset.dirName,
+                  path: deleteBtn.dataset.dirPath,
+                };
+
+                // Show delete directory modal
+                deleteDirectoryName.textContent = deleteBtn.dataset.dirName;
+                deleteDirectoryModal.classList.add("active");
+
+                return false;
+              });
+
+              // Add button to the item
+              item.appendChild(deleteBtn);
+            }
+          }
+        });
+      }
+
+      // 4. Start observing changes to the file explorer
+      folderObserver.observe(document.getElementById("file-explorer"), {
+        childList: true,
+        subtree: true,
+      });
+
+      // 5. Initial attachment of delete buttons (for existing folders)
+      attachDeleteButtonsToFolders();
+
+      // 6. Make sure buttons are attached whenever directories are navigated
+      // This provides a backup in case the mutation observer misses something
+      const originalNavigateToDirectory = window.navigateToDirectory;
+      window.navigateToDirectory = function (directoryPath) {
+        originalNavigateToDirectory(directoryPath);
+        setTimeout(attachDeleteButtonsToFolders, 100);
+      };
+
+      const originalLoadDirectory = window.loadDirectory;
+      window.loadDirectory = function (path) {
+        originalLoadDirectory(path);
+        setTimeout(attachDeleteButtonsToFolders, 100);
+      };
+    </script>
+  </body>
+</html>
