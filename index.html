@@ -2052,21 +2052,30 @@
         if (file.type === "image") {
           // Hide code editor and markdown preview
           codeEditor.style.display = "none";
+          const editorContainer = document.querySelector(".editor-container");
+          if (editorContainer) {
+            editorContainer.style.display = "none";
+          }
           if (document.getElementById("markdown-preview")) {
             document.getElementById("markdown-preview").style.display = "none";
           }
           imagePreview.style.display = "block";
 
           if (file.blob) {
-            // Create object URL from blob
             imagePreview.src = URL.createObjectURL(file.blob);
           } else {
-            imagePreview.src = "/api/placeholder/800/600";
+            // Fix: Create proper image URL from server
+            const imageUrl = `${SERVER_URL}/files${file.path}`;
+            imagePreview.src = imageUrl;
           }
 
           saveBtn.style.display = "none";
           runBtn.style.display = "none";
         } else if (file.type === "markdown") {
+          const editorContainer = document.querySelector(".editor-container");
+          if (editorContainer) {
+            editorContainer.style.display = "block";
+          }
           // Setup for markdown files with side-by-side preview
           imagePreview.style.display = "none";
           codeEditor.style.display = "block";
@@ -2105,6 +2114,10 @@
           saveBtn.style.display = "inline-block";
           runBtn.style.display = "none";
         } else {
+          const editorContainer = document.querySelector(".editor-container");
+          if (editorContainer) {
+            editorContainer.style.display = "block";
+          }
           // For all other text/code files
           imagePreview.style.display = "none";
           codeEditor.style.display = "block";
