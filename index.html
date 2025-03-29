@@ -1596,7 +1596,7 @@
         }
 
         // For real server
-        fetch(`${SERVER_URL}/directories/${directoryPath}`)
+        fetch(`${SERVER_URL}/directories${directoryPath}`)
           .then((response) => {
             if (!response.ok) {
               throw new Error(`HTTP error ${response.status}`);
